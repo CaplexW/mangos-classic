@@ -29,7 +29,7 @@ if(BUILD_PLAYERBOTS)
     PlayerBots
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/PlayerBots"
     GIT_REPOSITORY "https://github.com/cmangos/playerbots.git"
-    GIT_TAG "master"
+    GIT_TAG "da4419afc44f97bb950ca2ebccc3f29a902a3fab"
   )
 
   FetchContent_GetProperties(PlayerBots)

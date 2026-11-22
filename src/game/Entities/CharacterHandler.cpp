@@ -149,7 +149,9 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(QueryResult* dummy, SqlQueryH
     {
         allowed = true;
     }
-    else if (masterSession && sPlayerbotAIConfig.allowGuildBots && bot->GetGuildId() == masterSession->GetPlayer()->GetGuildId())
+    // GuildlessBotPatch: allow any logged-in player to control any bot when AllowGuildBots is enabled,
+    // no guild equality requirement (original: bot->GetGuildId() == master->GetGuildId())
+    else if (masterSession && sPlayerbotAIConfig.allowGuildBots)
     {
         allowed = true;
     }
