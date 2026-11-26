@@ -2,7 +2,7 @@ name: Build mangosd (guildless playerbots patch)
 
 on:
   push:
-    branches: [ guildless ]
+    branches: [ guildless, rank-fix ]
   workflow_dispatch:
 
 env:

@@ -131,6 +131,8 @@ World::World(): mail_timer(0), mail_timer_expires(0), m_NextWeeklyQuestReset(0),
     m_maxActiveSessionCount = 0;
     m_maxQueuedSessionCount = 0;
     m_MaintenanceTimeChecker = 0;
+    m_MaintenanceAnnounced = false;
+    m_MaintenanceShutdownScheduled = false;
 
     m_defaultDbcLocale = DEFAULT_LOCALE;
     m_availableDbcLocaleMask = 0;
@@ -626,6 +628,8 @@ void World::LoadConfigSettings(bool reload)
     setConfig(CONFIG_BOOL_THREAT_API, "Custom.ThreatApi", false);
 
     setConfigMinMax(CONFIG_UINT32_MAINTENANCE_DAY, "MaintenanceDay", 4, 0, 6);
+    setConfigMinMax(CONFIG_UINT32_MAINTENANCE_ANNOUNCE_MINUTES, "Maintenance.AnnounceMinutes", 15, 0, 120);
+    setConfigMinMax(CONFIG_UINT32_MAINTENANCE_SHUTDOWN_MINUTES, "Maintenance.ShutdownMinutes", 1, 0, 120);
 
     setConfig(CONFIG_BOOL_ALWAYS_SHOW_QUEST_GREETING, "AlwaysShowQuestGreeting", false);
 
@@ -1842,6 +1846,55 @@ void World::Update(uint32 diff)
     // update the instance reset times
     sMapPersistentStateMgr.Update();
 
+    // Maintenance window: optional announce/shutdown before the maintenance day boundary.
+    if (!m_stopEvent && m_NextMaintenanceDate)
+    {
+        time_t const now = m_gameTime;
+        tm* localNow = GetLocalTimeByTime(now);
+        tm midnight = *localNow;
+        midnight.tm_hour = 0;
+        midnight.tm_min = 0;
+        midnight.tm_sec = 0;
+        midnight.tm_isdst = -1;
+        time_t nextMidnight = mktime(&midnight);
+        if (nextMidnight <= now)
+            nextMidnight += 24 * HOUR;
+
+        uint32 nextDate = GetDateByLocalTime(GetLocalTimeByTime(nextMidnight));
+        uint32 const announceMinutes = getConfig(CONFIG_UINT32_MAINTENANCE_ANNOUNCE_MINUTES);
+        uint32 const shutdownMinutes = getConfig(CONFIG_UINT32_MAINTENANCE_SHUTDOWN_MINUTES);
+        uint32 const leadMinutes = std::max(announceMinutes, shutdownMinutes);
+
+        if (nextDate == m_NextMaintenanceDate && leadMinutes > 0)
+        {
+            uint32 const secondsUntilMaintenance = uint32(nextMidnight - now);
+            uint32 const announceSeconds = announceMinutes * MINUTE;
+            uint32 const shutdownSeconds = shutdownMinutes * MINUTE;
+
+            if (announceMinutes > 0 && !m_MaintenanceAnnounced && secondsUntilMaintenance <= announceSeconds)
+            {
+                m_MaintenanceAnnounced = true;
+                char buff[128];
+                snprintf(buff, sizeof(buff), "Server maintenance in %u minutes. Server will shut down shortly before maintenance.", announceMinutes);
+                SendServerMessage(SERVER_MSG_CUSTOM, buff);
+                sLog.outString("[MAINTENANCE] Announced maintenance shutdown in %u minutes.", announceMinutes);
+            }
+
+            if (shutdownMinutes > 0 && !m_MaintenanceShutdownScheduled && !IsShutdowning() && secondsUntilMaintenance <= shutdownSeconds)
+            {
+                m_MaintenanceShutdownScheduled = true;
+                uint32 const shutdownDelay = secondsUntilMaintenance > 10 ? secondsUntilMaintenance : 10;
+                sLog.outString("[MAINTENANCE] Scheduling server shutdown in %u seconds before maintenance.", shutdownDelay);
+                ShutdownServ(shutdownDelay, 0, SHUTDOWN_EXIT_CODE);
+            }
+        }
+        else
+        {
+            m_MaintenanceAnnounced = false;
+            m_MaintenanceShutdownScheduled = false;
+        }
+    }
+
     if (m_MaintenanceTimeChecker < diff)
     {
         if (GetDateToday() >= m_NextMaintenanceDate)
@@ -2387,6 +2440,9 @@ void World::ServerMaintenanceStart()
 
     if (m_NextMaintenanceDate <= GetDateToday())            // avoid loop in manually case, maybe useless
         m_NextMaintenanceDate += 7;
+
+    m_MaintenanceAnnounced = false;
+    m_MaintenanceShutdownScheduled = false;
 
     // flushing rank points list ( standing must be reloaded after server maintenance )
     sObjectMgr.FlushRankPoints(LastWeekEnd);

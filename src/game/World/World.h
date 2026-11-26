@@ -185,6 +185,8 @@ enum eConfigUInt32Values
     CONFIG_UINT32_INTERACTION_PAUSE_TIMER,
     CONFIG_UINT32_MIN_LEVEL_STAT_SAVE,
     CONFIG_UINT32_MAINTENANCE_DAY,
+    CONFIG_UINT32_MAINTENANCE_ANNOUNCE_MINUTES,
+    CONFIG_UINT32_MAINTENANCE_SHUTDOWN_MINUTES,
     CONFIG_UINT32_CHARDELETE_KEEP_DAYS,
     CONFIG_UINT32_CHARDELETE_METHOD,
     CONFIG_UINT32_CHARDELETE_MIN_LEVEL,
@@ -752,6 +754,8 @@ class World
 
         uint32 m_NextMaintenanceDate;
         uint32 m_MaintenanceTimeChecker;
+        bool m_MaintenanceAnnounced;
+        bool m_MaintenanceShutdownScheduled;
 
         time_t m_startTime;
         time_t m_gameTime;

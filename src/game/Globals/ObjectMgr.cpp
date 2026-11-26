@@ -3737,7 +3737,7 @@ void ObjectMgr::LoadStandingList(uint32 dateBegin)
 
     Field* fields = nullptr;
     // this query create an ordered standing list
-    auto queryResult = CharacterDatabase.PQuery("SELECT guid,SUM(honor) as honor_sum FROM character_honor_cp WHERE TYPE = %u AND date BETWEEN %u AND %u GROUP BY guid ORDER BY honor_sum DESC", HONORABLE, dateBegin, dateBegin + 7);
+    auto queryResult = CharacterDatabase.PQuery("SELECT guid,SUM(honor) as honor_sum FROM character_honor_cp WHERE TYPE = %u AND date >= %u AND date < %u GROUP BY guid ORDER BY honor_sum DESC", HONORABLE, dateBegin, dateBegin + 7);
     if (queryResult)
     {
         BarGoLink bar(queryResult->GetRowCount());
@@ -3750,7 +3750,7 @@ void ObjectMgr::LoadStandingList(uint32 dateBegin)
 
             kills = 0;
             // kills count with victim setted ( not zero value )
-            auto queryResult2 = CharacterDatabase.PQuery("SELECT COUNT(*) FROM character_honor_cp WHERE guid = %u AND victim>0 AND TYPE = %u AND date BETWEEN %u AND %u", guid, HONORABLE, dateBegin, dateBegin + 7);
+            auto queryResult2 = CharacterDatabase.PQuery("SELECT COUNT(*) FROM character_honor_cp WHERE guid = %u AND victim>0 AND TYPE = %u AND date >= %u AND date < %u", guid, HONORABLE, dateBegin, dateBegin + 7);
             if (queryResult2)
                 kills = queryResult2->Fetch()->GetUInt32();
 
@@ -3858,7 +3858,7 @@ void ObjectMgr::FlushRankPoints(uint32 dateTop)
         {
             LoadStandingList(WeekBegin);
 
-            flush = WeekBegin < dateTop - 7; // flush only with date < lastweek
+            flush = WeekBegin <= dateTop - 7; // flush completed weeks (week ends at WeekBegin+7)
 
             DistributeRankPoints(ALLIANCE, WeekBegin, flush);
             DistributeRankPoints(HORDE, WeekBegin, flush);
@@ -3910,7 +3910,7 @@ void ObjectMgr::DistributeRankPoints(uint32 team, uint32 dateBegin, bool flush /
     float RP;
     uint32 HK;
 
-    HonorStandingList list = GetStandingListBySide(team);
+    HonorStandingList& list = (team == ALLIANCE) ? AllyHonorStandingList : HordeHonorStandingList;
 
     if (list.empty())
         return;
@@ -3935,14 +3935,23 @@ void ObjectMgr::DistributeRankPoints(uint32 team, uint32 dateBegin, bool flush /
         if (flush)
         {
             CharacterDatabase.BeginTransaction();
-            CharacterDatabase.PExecute("DELETE FROM character_honor_cp WHERE guid = %u AND TYPE = %u AND date BETWEEN %u AND %u", itr->guid, HONORABLE, dateBegin, dateBegin + 7);
-            CharacterDatabase.PExecute("UPDATE characters SET stored_honor_rating = %f , stored_honorable_kills = %u WHERE guid = %u", finiteAlways(RP + itr->rpEarning), HK + itr->honorKills, itr->guid);
+            CharacterDatabase.PExecute("DELETE FROM character_honor_cp WHERE guid = %u AND TYPE = %u AND date >= %u AND date < %u", itr->guid, HONORABLE, dateBegin, dateBegin + 7);
+            // CalculateRpDecay already returns RP + delta (earning included), so do not add rpEarning again.
+            CharacterDatabase.PExecute("UPDATE characters SET stored_honor_rating = %f , stored_honorable_kills = %u WHERE guid = %u", finiteAlways(RP), HK + itr->honorKills, itr->guid);
             CharacterDatabase.CommitTransaction();
+
+            if (Player* player = ObjectAccessor::FindPlayer(ObjectGuid(HIGHGUID_PLAYER, itr->guid)))
+            {
+                player->SetStoredHonor(RP);
+                player->SetHonorStoredKills(HK + itr->honorKills, true);
+            }
+
+            itr->rpEarning = 0;
         }
     }
 }
 
-HonorStandingList ObjectMgr::GetStandingListBySide(uint32 side)
+HonorStandingList& ObjectMgr::GetStandingListBySide(uint32 side)
 {
     switch (side)
     {
@@ -3954,7 +3963,7 @@ HonorStandingList ObjectMgr::GetStandingListBySide(uint32 side)
 
 std::optional<HonorStanding> ObjectMgr::GetHonorStandingByGUID(uint32 guid, uint32 side)
 {
-    HonorStandingList standingList = sObjectMgr.GetStandingListBySide(side);
+    HonorStandingList& standingList = (side == HORDE) ? HordeHonorStandingList : AllyHonorStandingList;
 
     for (HonorStandingList::iterator itr = standingList.begin(); itr != standingList.end() ; ++itr)
         if (itr->guid == guid)
@@ -3966,7 +3975,7 @@ std::optional<HonorStanding> ObjectMgr::GetHonorStandingByGUID(uint32 guid, uint
 
 std::optional<HonorStanding> ObjectMgr::GetHonorStandingByPosition(uint32 position, uint32 side)
 {
-    HonorStandingList standingList = sObjectMgr.GetStandingListBySide(side);
+    HonorStandingList& standingList = (side == HORDE) ? HordeHonorStandingList : AllyHonorStandingList;
     uint32 pos = 1;
 
     for (HonorStandingList::iterator itr = standingList.begin(); itr != standingList.end() ; ++itr)
@@ -3981,7 +3990,7 @@ std::optional<HonorStanding> ObjectMgr::GetHonorStandingByPosition(uint32 positi
 
 uint32 ObjectMgr::GetHonorStandingPositionByGUID(uint32 guid, uint32 side)
 {
-    HonorStandingList standingList = sObjectMgr.GetStandingListBySide(side);
+    HonorStandingList& standingList = (side == HORDE) ? HordeHonorStandingList : AllyHonorStandingList;
     uint32 pos = 1;
 
     for (HonorStandingList::iterator itr = standingList.begin(); itr != standingList.end() ; ++itr)
