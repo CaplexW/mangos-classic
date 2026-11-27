@@ -39,6 +39,9 @@ jobs:
           BOOST_ROOT: ${{ steps.install-boost.outputs.BOOST_ROOT }}
         run: cmake ${{ env.BUILD_OPTIONS }} -B ${{ env.BUILD_DIR }} -S ${{ env.REPO_DIR }}
 
+      - name: Patch transmog module (any class, any armor type)
+        run: python "${{ env.REPO_DIR }}/tools/patch_transmog_any_armor.py" "${{ env.REPO_DIR }}/src/modules/transmog"
+
       - name: Build
         env:
           MAKEFLAGS: "-j8"

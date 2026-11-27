@@ -71,10 +71,17 @@ if(BUILD_MODULES)
     if(BUILD_MODULE_${MODULE_NAME} OR BUILD_${MODULE_NAME})
       include(FetchContent)
 
+      # The transmog module is patched by tools/patch_transmog_any_armor.py before
+      # it is compiled, so pin it to the exact commit that patch is written for.
+      set(MODULE_GIT_TAG "main")
+      if(LOWER_MODULE_NAME STREQUAL "transmog")
+        set(MODULE_GIT_TAG "0abf98b38e80724b5a2847b029ccf72e09d98ef2")
+      endif()
+
       FetchContent_Declare(
         ${LOWER_MODULE_NAME}
         GIT_REPOSITORY "${MODULE_URL}"
-        GIT_TAG "main"
+        GIT_TAG "${MODULE_GIT_TAG}"
       )
 
       if(NOT ${LOWER_MODULE_NAME}_POPULATED)
